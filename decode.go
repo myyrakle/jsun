@@ -633,6 +633,7 @@ func (d *decodeState) object(v reflect.Value) error {
 	//   struct or
 	//   map[T1]T2 where T1 is string, an integer type,
 	//             or an encoding.TextUnmarshaler
+	fmt.Printf("v.Kind() = %#v\n", v.Kind())
 	switch v.Kind() {
 	case reflect.Map:
 		// Map key must either have string kind, have an integer kind,
@@ -655,6 +656,7 @@ func (d *decodeState) object(v reflect.Value) error {
 		fields = cachedTypeFields(t)
 		// ok
 	default:
+
 		d.saveError(&UnmarshalTypeError{Value: "object", Type: t, Offset: int64(d.off)})
 		d.skip()
 		return nil
@@ -700,82 +702,116 @@ func (d *decodeState) object(v reflect.Value) error {
 			subv = mapElem
 		} else {
 			var f *field
-			if i, ok := fields.nameIndex[string(key)]; ok {
-				// Found an exact name match.
+
+			// !!!!
+
+			for _, i := range fields.nameIndex[string(key)] {
 				f = &fields.list[i]
-			} else {
-				// Fall back to the expensive case-insensitive
-				// linear search.
-				for i := range fields.list {
-					ff := &fields.list[i]
-					if ff.equalFold(ff.nameBytes, key) {
-						f = ff
-						break
-					}
-				}
-			}
-			if f != nil {
-				subv = v
-				destring = f.quoted
-				for _, i := range f.index {
-					if subv.Kind() == reflect.Pointer {
-						if subv.IsNil() {
-							// If a struct embeds a pointer to an unexported type,
-							// it is not possible to set a newly allocated value
-							// since the field is unexported.
-							//
-							// See https://golang.org/issue/21357
-							if !subv.CanSet() {
-								d.saveError(fmt.Errorf("json: cannot set embedded pointer to unexported struct: %v", subv.Type().Elem()))
-								// Invalidate subv to ensure d.value(subv) skips over
-								// the JSON value without assigning it to subv.
-								subv = reflect.Value{}
-								destring = false
-								break
+
+				if f != nil {
+					subv = v
+					destring = f.quoted
+					for _, i := range f.index {
+						if subv.Kind() == reflect.Pointer {
+							if subv.IsNil() {
+								// If a struct embeds a pointer to an unexported type,
+								// it is not possible to set a newly allocated value
+								// since the field is unexported.
+								//
+								// See https://golang.org/issue/21357
+								if !subv.CanSet() {
+									d.saveError(fmt.Errorf("json: cannot set embedded pointer to unexported struct: %v", subv.Type().Elem()))
+									// Invalidate subv to ensure d.value(subv) skips over
+									// the JSON value without assigning it to subv.
+									subv = reflect.Value{}
+									destring = false
+									break
+								}
+								subv.Set(reflect.New(subv.Type().Elem()))
 							}
-							subv.Set(reflect.New(subv.Type().Elem()))
+							subv = subv.Elem()
 						}
-						subv = subv.Elem()
+						subv = subv.Field(i)
 					}
-					subv = subv.Field(i)
+					if d.errorContext == nil {
+						d.errorContext = new(errorContext)
+					}
+					d.errorContext.FieldStack = append(d.errorContext.FieldStack, f.name)
+					d.errorContext.Struct = t
+				} else if d.disallowUnknownFields {
+					d.saveError(fmt.Errorf("json: unknown field %q", key))
 				}
-				if d.errorContext == nil {
-					d.errorContext = new(errorContext)
+
+				// Read : before value.
+				if d.opcode == scanSkipSpace {
+					d.scanWhile(scanSkipSpace)
 				}
-				d.errorContext.FieldStack = append(d.errorContext.FieldStack, f.name)
-				d.errorContext.Struct = t
-			} else if d.disallowUnknownFields {
-				d.saveError(fmt.Errorf("json: unknown field %q", key))
+				if d.opcode != scanObjectKey {
+					panic(phasePanicMsg)
+				}
+				d.scanWhile(scanSkipSpace)
+
+				if destring {
+					switch qv := d.valueQuoted().(type) {
+					case nil:
+						if err := d.literalStore(nullLiteral, subv, false); err != nil {
+							if f.failable {
+								continue
+							}
+							return err
+						}
+					case string:
+						if err := d.literalStore([]byte(qv), subv, true); err != nil {
+							if f.failable {
+								continue
+							}
+							return err
+						}
+					default:
+						if f.failable {
+							continue
+						}
+						d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
+					}
+				} else {
+					if err := d.value(subv); err != nil {
+						if f.failable {
+							continue
+						}
+						return err
+					}
+				}
 			}
+
 		}
 
-		// Read : before value.
-		if d.opcode == scanSkipSpace {
-			d.scanWhile(scanSkipSpace)
-		}
-		if d.opcode != scanObjectKey {
-			panic(phasePanicMsg)
-		}
-		d.scanWhile(scanSkipSpace)
+		// // Read : before value.
+		// if d.opcode == scanSkipSpace {
+		// 	d.scanWhile(scanSkipSpace)
+		// }
+		// if d.opcode != scanObjectKey {
+		// 	panic(phasePanicMsg)
+		// }
+		// d.scanWhile(scanSkipSpace)
 
-		if destring {
-			switch qv := d.valueQuoted().(type) {
-			case nil:
-				if err := d.literalStore(nullLiteral, subv, false); err != nil {
-					return err
-				}
-			case string:
-				if err := d.literalStore([]byte(qv), subv, true); err != nil {
-					return err
-				}
-			default:
-				d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
-			}
-		} else {
-			if err := d.value(subv); err != nil {
-				return err
-			}
-		}
+		// if destring {
+		// 	switch qv := d.valueQuoted().(type) {
+		// 	case nil:
+		// 		if err := d.literalStore(nullLiteral, subv, false); err != nil {
+		// 			return err
+		// 		}
+		// 	case string:
+		// 		if err := d.literalStore([]byte(qv), subv, true); err != nil {
+		// 			return err
+		// 		}
+		// 	default:
+		// 		d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
+		// 	}
+		// } else {
+		// 	if err := d.value(subv); err != nil {
+		// 		return err
+		// 	}
+		// }
 
 		// Write value back to map;
 		// if using struct, subv points into struct already.
