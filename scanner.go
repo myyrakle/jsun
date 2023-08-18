@@ -84,6 +84,16 @@ type scanner struct {
 	bytes int64
 }
 
+func (scan *scanner) clone() scanner {
+	return scanner{
+		step:       scan.step,
+		endTop:     scan.endTop,
+		parseState: append([]int(nil), scan.parseState...),
+		err:        scan.err,
+		bytes:      scan.bytes,
+	}
+}
+
 var scannerPool = sync.Pool{
 	New: func() any {
 		return &scanner{}
