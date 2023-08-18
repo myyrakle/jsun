@@ -13,11 +13,11 @@ type TradeDetail struct {
 type TradeHistory struct {
 	TradeID    string        `json:"trade_id"`
 	DetailList []TradeDetail `json:"detail,failable"`
-	Detail     TradeDetail   `json:"detail"`
+	Detail     TradeDetail   `json:"detail,failable"`
 }
 
 func main() {
-	testcase1 := `{ "trade_id": "1234", "detail": { "item_id": "abcd" }, "foo": "bar" }`
+	testcase1 := `{ "trade_id": "1234", "detail": { "item_id": "abcd" } }`
 	testcase2 := `{ "trade_id": "1234", "detail": [{ "item_id": "abcd" }] }`
 
 	var history TradeHistory
