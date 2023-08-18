@@ -13,7 +13,7 @@ type TradeDetail struct {
 type TradeHistory struct {
 	TradeID    string        `json:"trade_id"`
 	DetailList []TradeDetail `json:"detail,failable"`
-	// Detail     TradeDetail   `json:"detail,failable"`
+	Detail     TradeDetail   `json:"detail"`
 }
 
 func main() {

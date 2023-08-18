@@ -818,7 +818,6 @@ func (d *decodeState) object(v reflect.Value) error {
 			d.scanWhile(scanSkipSpace)
 		}
 		if d.opcode != scanObjectKey {
-			fmt.Println("d.opcode != scanObjectKey", d.opcode, scanObjectKey)
 			panic(phasePanicMsg)
 		}
 		d.scanWhile(scanSkipSpace)
@@ -846,12 +845,8 @@ func (d *decodeState) object(v reflect.Value) error {
 						return err
 					}
 				}
-
-				fmt.Println("opcode 2222", d.opcode)
 			} else {
 				for i, subv := range subvList {
-
-					fmt.Println("opcode 1", d.opcode)
 					decodeStateSnapshot := d.snapshot()
 
 					if err := d.value(subv); err != nil || d.savedError != nil {
@@ -861,12 +856,8 @@ func (d *decodeState) object(v reflect.Value) error {
 							*d = decodeStateSnapshot
 							d.savedError = nil
 
-							fmt.Println("opcode 2", d.opcode)
-
 							continue
 						} else {
-
-							fmt.Println("opcode 3", d.opcode)
 							return err
 						}
 					} else {
@@ -917,8 +908,6 @@ func (d *decodeState) object(v reflect.Value) error {
 			}
 		}
 
-		fmt.Println("opcode 4", d.opcode)
-
 		// Next token must be , or }.
 		if d.opcode == scanSkipSpace {
 			d.scanWhile(scanSkipSpace)
@@ -936,8 +925,6 @@ func (d *decodeState) object(v reflect.Value) error {
 		if d.opcode != scanObjectValue {
 			panic(phasePanicMsg)
 		}
-
-		fmt.Println("opcode 5", d.opcode)
 	}
 	return nil
 }
