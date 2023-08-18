@@ -723,8 +723,9 @@ type structEncoder struct {
 }
 
 type structFields struct {
-	list      []field
-	nameIndex map[string]int
+	list           []field
+	nameIndex      map[string]int
+	nameMultiIndex map[string][]int
 }
 
 func (se structEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
@@ -1355,29 +1356,29 @@ func typeFields(t reflect.Type) structFields {
 	// The fields are sorted in primary order of name, secondary order
 	// of field index length. Loop over names; for each name, delete
 	// hidden fields by choosing the one dominant field that survives.
-	out := fields[:0]
-	for advance, i := 0, 0; i < len(fields); i += advance {
-		// One iteration per name.
-		// Find the sequence of fields with the name of this first field.
-		fi := fields[i]
-		name := fi.name
-		for advance = 1; i+advance < len(fields); advance++ {
-			fj := fields[i+advance]
-			if fj.name != name {
-				break
-			}
-		}
-		if advance == 1 { // Only one field with this name
-			out = append(out, fi)
-			continue
-		}
-		dominant, ok := dominantField(fields[i : i+advance])
-		if ok {
-			out = append(out, dominant)
-		}
-	}
-
-	fields = out
+	// out := fields[:0]
+	// for advance, i := 0, 0; i < len(fields); i += advance {
+	// 	// One iteration per name.
+	// 	// Find the sequence of fields with the name of this first field.
+	// 	fi := fields[i]
+	// 	name := fi.name
+	// 	for advance = 1; i+advance < len(fields); advance++ {
+	// 		fj := fields[i+advance]
+	// 		if fj.name != name {
+	// 			break
+	// 		}
+	// 	}
+	// 	if advance == 1 { // Only one field with this name
+	// 		out = append(out, fi)
+	// 		continue
+	// 	}
+	// 	dominant, ok := dominantField(fields[i : i+advance])
+	// 	if ok {
+	// 		out = append(out, dominant)
+	// 	}
+	// }
+	//
+	// fields = out
 	sort.Sort(byIndex(fields))
 
 	for i := range fields {
@@ -1388,7 +1389,15 @@ func typeFields(t reflect.Type) structFields {
 	for i, field := range fields {
 		nameIndex[field.name] = i
 	}
-	return structFields{fields, nameIndex}
+	nameMultiIndex := make(map[string][]int, len(fields))
+	for i, field := range fields {
+		if _, ok := nameMultiIndex[field.name]; !ok {
+			nameMultiIndex[field.name] = []int{i}
+		} else {
+			nameMultiIndex[field.name] = append(nameMultiIndex[field.name], i)
+		}
+	}
+	return structFields{fields, nameIndex, nameMultiIndex}
 }
 
 // dominantField looks through the fields, all of which are known to

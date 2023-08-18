@@ -219,6 +219,19 @@ type decodeState struct {
 	disallowUnknownFields bool
 }
 
+func (d *decodeState) snapshot() decodeState {
+	return decodeState{
+		data:                  d.data,
+		off:                   d.off,
+		opcode:                d.opcode,
+		scan:                  d.scan.clone(),
+		errorContext:          d.errorContext,
+		savedError:            d.savedError,
+		useNumber:             d.useNumber,
+		disallowUnknownFields: d.disallowUnknownFields,
+	}
+}
+
 // readIndex returns the position of the last byte read.
 func (d *decodeState) readIndex() int {
 	return d.off - 1
@@ -669,6 +682,9 @@ func (d *decodeState) object(v reflect.Value) error {
 	var f *field
 
 	for {
+		fieldList := []*field{}
+		subvList := []reflect.Value{}
+
 		// Read opening " of string key or closing }.
 		d.scanWhile(scanSkipSpace)
 		if d.opcode == scanEndObject {
@@ -716,6 +732,13 @@ func (d *decodeState) object(v reflect.Value) error {
 					}
 				}
 			}
+
+			if iList, ok := fields.nameMultiIndex[string(key)]; ok {
+				for _, i := range iList {
+					fieldList = append(fieldList, &fields.list[i])
+				}
+			}
+
 			if f != nil {
 				subv = v
 				destring = f.quoted
@@ -750,6 +773,44 @@ func (d *decodeState) object(v reflect.Value) error {
 			} else if d.disallowUnknownFields {
 				d.saveError(fmt.Errorf("json: unknown field %q", key))
 			}
+
+			subvList = make([]reflect.Value, len(fieldList))
+
+			if len(fieldList) > 0 {
+				for subvIndex, f := range fieldList {
+					subvList[subvIndex] = v
+					destring = f.quoted
+					for _, i := range f.index {
+						if subvList[subvIndex].Kind() == reflect.Pointer {
+							if subvList[subvIndex].IsNil() {
+								// If a struct embeds a pointer to an unexported type,
+								// it is not possible to set a newly allocated value
+								// since the field is unexported.
+								//
+								// See https://golang.org/issue/21357
+								if !subvList[subvIndex].CanSet() {
+									d.saveError(fmt.Errorf("json: cannot set embedded pointer to unexported struct: %v", subvList[subvIndex].Type().Elem()))
+									// Invalidate subv to ensure d.value(subv) skips over
+									// the JSON value without assigning it to subv.
+									subvList[subvIndex] = reflect.Value{}
+									destring = false
+									break
+								}
+								subv.Set(reflect.New(subvList[subvIndex].Type().Elem()))
+							}
+							subvList[subvIndex] = subvList[subvIndex].Elem()
+						}
+						subvList[subvIndex] = subvList[subvIndex].Field(i)
+					}
+					if d.errorContext == nil {
+						d.errorContext = new(errorContext)
+					}
+
+					d.errorContext.FieldStack = append(d.errorContext.FieldStack, f.name)
+					d.errorContext.Struct = t
+				}
+
+			}
 		}
 
 		// Read : before value.
@@ -775,15 +836,35 @@ func (d *decodeState) object(v reflect.Value) error {
 				d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
 			}
 		} else {
+			if len(subvList) < 2 {
+				if err := d.value(subv); err != nil || d.savedError != nil {
+					// 실패 가능한 필드
+					if f.failable {
+						d.savedError = nil
+					} else {
+						return err
+					}
+				}
+			} else {
+				for i, subv := range subvList {
+					decodeStateSnapshot := d.snapshot()
 
-			if err := d.value(subv); err != nil {
-				return err
+					if err := d.value(subv); err != nil || d.savedError != nil {
+						f := fieldList[i]
+
+						if f.failable {
+							*d = decodeStateSnapshot
+							d.savedError = nil
+
+							continue
+						} else {
+							return err
+						}
+					} else {
+						break
+					}
+				}
 			}
-		}
-
-		// 실패 가능한 필드
-		if d.savedError != nil && f.failable {
-			d.savedError = nil
 		}
 
 		// Write value back to map;
