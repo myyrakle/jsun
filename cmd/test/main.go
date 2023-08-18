@@ -11,9 +11,9 @@ type TradeDetail struct {
 }
 
 type TradeHistory struct {
-	TradeID    string        `json:"trade_id"`
-	Detail     TradeDetail   `json:"detail"`
-	DetailList []TradeDetail `json:"detail"`
+	TradeID string        `json:"trade_id"`
+	Detail  []TradeDetail `json:"detail,failable"`
+	// DetailList []TradeDetail `json:"detail"`
 }
 
 func main() {
@@ -28,13 +28,14 @@ func main() {
 		fmt.Println("testcase1 passed")
 	}
 
-	fmt.Println(history.Detail.ItemID)
+	fmt.Printf("history %#v\n", history)
 
-	if err := json.Unmarshal([]byte(testcase2), &history); err != nil {
+	var history2 TradeHistory
+	if err := json.Unmarshal([]byte(testcase2), &history2); err != nil {
 		fmt.Println("testcase2 failed")
 		fmt.Println(err)
 	} else {
 		fmt.Println("testcase2 passed")
 	}
-	fmt.Println(history.DetailList[0].ItemID)
+	fmt.Printf("history2 %#v\n", history2)
 }

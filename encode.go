@@ -724,7 +724,7 @@ type structEncoder struct {
 
 type structFields struct {
 	list      []field
-	nameIndex map[string][]int
+	nameIndex map[string]int
 }
 
 func (se structEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
@@ -1355,43 +1355,39 @@ func typeFields(t reflect.Type) structFields {
 	// The fields are sorted in primary order of name, secondary order
 	// of field index length. Loop over names; for each name, delete
 	// hidden fields by choosing the one dominant field that survives.
-	// out := fields[:0]
-	// for advance, i := 0, 0; i < len(fields); i += advance {
-	// 	// One iteration per name.
-	// 	// Find the sequence of fields with the name of this first field.
-	// 	fi := fields[i]
-	// 	name := fi.name
-	// 	for advance = 1; i+advance < len(fields); advance++ {
-	// 		fj := fields[i+advance]
-	// 		if fj.name != name {
-	// 			break
-	// 		}
-	// 	}
-	// 	if advance == 1 { // Only one field with this name
-	// 		out = append(out, fi)
-	// 		continue
-	// 	}
-	// 	dominant, ok := dominantField(fields[i : i+advance])
-	// 	if ok {
-	// 		out = append(out, dominant)
-	// 	}
-	// }
+	out := fields[:0]
+	for advance, i := 0, 0; i < len(fields); i += advance {
+		// One iteration per name.
+		// Find the sequence of fields with the name of this first field.
+		fi := fields[i]
+		name := fi.name
+		for advance = 1; i+advance < len(fields); advance++ {
+			fj := fields[i+advance]
+			if fj.name != name {
+				break
+			}
+		}
+		if advance == 1 { // Only one field with this name
+			out = append(out, fi)
+			continue
+		}
+		dominant, ok := dominantField(fields[i : i+advance])
+		if ok {
+			out = append(out, dominant)
+		}
+	}
 
-	// fmt.Printf("fields %#v\n", len(fields))
-	// fmt.Printf("out %#v\n", len(out))
-
-	// fields = out
-	sort.Stable(byIndex(fields))
+	fields = out
+	sort.Sort(byIndex(fields))
 
 	for i := range fields {
 		f := &fields[i]
 		f.encoder = typeEncoder(typeByIndex(t, f.index))
 	}
-	nameIndex := make(map[string][]int, len(fields))
+	nameIndex := make(map[string]int, len(fields))
 	for i, field := range fields {
-		nameIndex[field.name] = append(nameIndex[field.name], i)
+		nameIndex[field.name] = i
 	}
-
 	return structFields{fields, nameIndex}
 }
 
